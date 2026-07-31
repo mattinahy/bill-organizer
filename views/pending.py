@@ -2,6 +2,7 @@
 import streamlit as st
 from utils import db, logic, sync
 from utils.config import get_expense_types, get_quick_buttons, add_expense_type, delete_expense_type, set_quick_buttons
+from utils import merchant_memory
 
 
 def render():
@@ -19,6 +20,9 @@ def render():
 
     with tab2:
         _render_pending_duplicates()
+
+    # 处理备注弹窗状态
+    _handle_note_dialog()
 
 
 def _render_type_manager():
@@ -60,6 +64,62 @@ def _render_type_manager():
         st.rerun()
 
 
+def _handle_note_dialog():
+    """处理备注弹窗"""
+    note_state = st.session_state.get("note_dialog")
+    if not note_state:
+        return
+
+    tx_id = note_state["tx_id"]
+    ownership = note_state["ownership"]
+    usage_category = note_state["usage_category"]
+
+    tx = db.get_transaction_by_id(tx_id)
+    if not tx:
+        st.session_state.pop("note_dialog", None)
+        return
+
+    st.markdown("---")
+    st.markdown(f"#### 📝 添加备注")
+    st.caption(f"交易：{tx.get('merchant') or tx.get('original_note') or '-'} ¥{tx['amount']:.2f}")
+    st.caption(f"分类：{ownership}" + (f" / {usage_category}" if usage_category else ""))
+
+    note = st.text_area("备注说明", key="note_input", placeholder="例如：7月团建、客户A货款...",
+                        value=st.session_state.get("note_default", ""))
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 保存", key="note_save", type="primary", use_container_width=True):
+            _finalize_classify(tx_id, ownership, usage_category, note)
+            st.session_state.pop("note_dialog", None)
+            st.session_state.pop("note_default", None)
+            sync.sync_to_github()
+            st.rerun()
+    with col2:
+        if st.button("取消", key="note_cancel", use_container_width=True):
+            st.session_state.pop("note_dialog", None)
+            st.session_state.pop("note_default", None)
+            st.rerun()
+
+
+def _finalize_classify(tx_id: int, ownership: str, usage_category: str, note: str):
+    """最终保存分类和备注"""
+    fields = {"ownership": ownership, "confirmed": 1}
+    if usage_category:
+        fields["usage_category"] = usage_category
+    if note:
+        fields["usage_note"] = note
+
+    db.update_transaction(tx_id, fields)
+
+    tx = db.get_transaction_by_id(tx_id)
+    if tx and tx.get("merchant") and ownership == "公司" and usage_category:
+        # 记住商户分类
+        merchant_memory.remember(tx["merchant"], ownership, usage_category, note)
+        # 同步同商户
+        logic.sync_same_merchant(tx["merchant"], ownership, usage_category)
+
+
 def _render_pending_expenses():
     pending = logic.get_pending_expenses()
 
@@ -71,6 +131,26 @@ def _render_pending_expenses():
     st.info(f"**{len(pending)}** 笔待处理 · 合计 ¥{total_amount:,.2f}")
 
     quick_buttons = get_quick_buttons()
+
+    # 自动应用商户记忆
+    auto_applied = 0
+    for tx in pending:
+        merchant = tx.get("merchant")
+        if merchant and tx.get("ownership") == "待确认":
+            rule = merchant_memory.auto_classify(merchant)
+            if rule:
+                db.update_transaction(tx["id"], {
+                    "ownership": rule["ownership"],
+                    "usage_category": rule["usage_category"] or None,
+                    "usage_note": rule["usage_note"] or None,
+                    "confirmed": 1,
+                })
+                auto_applied += 1
+
+    if auto_applied > 0:
+        sync.sync_to_github()
+        st.success(f"🧠 已自动记忆分类 {auto_applied} 笔")
+        st.rerun()
 
     for tx in pending:
         _render_pending_item(tx, quick_buttons)
@@ -91,25 +171,31 @@ def _render_pending_item(tx: dict, quick_buttons: list[str]):
         if tx.get("usage_category"):
             st.caption(f"当前: {tx['usage_category']}")
 
-        # 快捷按钮行
-        cols = st.columns(min(len(quick_buttons) + 2, 4))
+        # 个人按钮
+        if st.button("👤 个人", key=f"p_{tx['id']}", use_container_width=True):
+            _open_note_dialog(tx["id"], "个人", None)
 
-        with cols[0]:
-            if st.button("👤 个人", key=f"p_{tx['id']}", use_container_width=True):
-                logic.classify_expense(tx["id"], "个人")
-                sync.sync_to_github()
-                st.rerun()
+        # 快捷公司分类按钮
+        for btn in quick_buttons[:6]:
+            if st.button(f"🏢 {btn}", key=f"qb_{tx['id']}_{btn}", use_container_width=True):
+                _open_note_dialog(tx["id"], "公司", btn)
 
-        for idx, btn in enumerate(quick_buttons[:6]):
-            col_idx = (idx + 1) % 3 + 1
-            if col_idx >= len(cols):
-                break
-            with cols[col_idx]:
-                if st.button(btn, key=f"qb_{tx['id']}_{btn}", use_container_width=True):
-                    logic.classify_expense(tx["id"], "公司", btn)
-                    if tx.get("merchant"):
-                        logic.sync_same_merchant(tx["merchant"], "公司", btn)
-                    sync.sync_to_github()
+        # 自定义分类
+        if st.button("✏️ 自定义分类", key=f"custom_{tx['id']}", use_container_width=True):
+            st.session_state[f"show_custom_{tx['id']}"] = True
+            st.rerun()
+
+        if st.session_state.get(f"show_custom_{tx['id']}", False):
+            custom_type = st.text_input("分类名称", key=f"custom_type_{tx['id']}", placeholder="如：客户招待")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("确认", key=f"custom_ok_{tx['id']}"):
+                    if custom_type.strip():
+                        add_expense_type(custom_type)
+                        _open_note_dialog(tx["id"], "公司", custom_type.strip())
+            with col2:
+                if st.button("取消", key=f"custom_cancel_{tx['id']}"):
+                    st.session_state[f"show_custom_{tx['id']}"] = False
                     st.rerun()
 
         # 不计入按钮
@@ -119,6 +205,28 @@ def _render_pending_item(tx: dict, quick_buttons: list[str]):
             st.rerun()
 
         st.markdown("---")
+
+
+def _open_note_dialog(tx_id: int, ownership: str, usage_category: str):
+    """打开备注输入弹窗"""
+    tx = db.get_transaction_by_id(tx_id)
+    if not tx:
+        return
+
+    # 如果有历史记忆，预填备注
+    default_note = ""
+    if tx.get("merchant"):
+        rule = merchant_memory.get_rule(tx["merchant"])
+        if rule and rule.get("ownership") == ownership and rule.get("usage_category") == (usage_category or ""):
+            default_note = rule.get("usage_note", "")
+
+    st.session_state["note_dialog"] = {
+        "tx_id": tx_id,
+        "ownership": ownership,
+        "usage_category": usage_category,
+    }
+    st.session_state["note_default"] = default_note
+    st.rerun()
 
 
 def _render_pending_duplicates():

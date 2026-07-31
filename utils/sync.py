@@ -27,9 +27,13 @@ def sync_to_github(force: bool = False) -> tuple[bool, str]:
         return False, "数据库文件不存在"
 
     try:
-        # git add database.db
+        # git add database.db 和 merchant_memory.json
+        files_to_track = ["database.db"]
+        if os.path.exists(os.path.join(PROJECT_DIR, "merchant_memory.json")):
+            files_to_track.append("merchant_memory.json")
+
         subprocess.run(
-            ["git", "add", "database.db"],
+            ["git", "add"] + files_to_track,
             cwd=PROJECT_DIR, capture_output=True, timeout=10
         )
 
