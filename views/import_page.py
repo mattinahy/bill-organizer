@@ -2,7 +2,7 @@
 import streamlit as st
 import os
 import time
-from utils import db, parser, logic
+from utils import db, parser, logic, sync
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -80,6 +80,12 @@ def render():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✅ 确认导入", type="primary", use_container_width=True):
+                # 防重复：检查是否同一批次已经导入过
+                if st.session_state.get("_importing", False):
+                    st.warning("正在导入中，请稍候...")
+                    st.stop()
+                st.session_state["_importing"] = True
+
                 batch_id = time.strftime("%Y%m%d%H%M%S")
                 for tx in transactions:
                     tx["import_batch"] = batch_id
@@ -90,10 +96,20 @@ def render():
                 with st.spinner("🔍 正在检测重复交易..."):
                     dup_count = logic.detect_duplicates()
 
+                # 清除上传文件状态
+                st.session_state["_importing"] = False
+                st.session_state["_imported_file"] = uploaded_file.name
+
                 st.success(f"✅ 成功导入 {count} 条！")
                 if dup_count > 0:
                     st.warning(f"⚠️ 检测到 {dup_count} 条疑似重复")
                 st.balloons()
+
+                # 自动同步到 GitHub
+                sync.sync_to_github()
+
+                # 延迟后刷新
+                time.sleep(1)
                 st.rerun()
 
         with col2:

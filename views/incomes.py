@@ -1,6 +1,6 @@
 """收入处理页面 - 移动端友好"""
 import streamlit as st
-from utils import db, logic
+from utils import db, logic, sync
 
 
 def render():
@@ -83,6 +83,7 @@ def _render_income_row(tx: dict):
                     "project_client": client,
                     "confirmed": 1,
                 })
+                sync.sync_to_github()
                 st.success("已保存")
                 st.rerun()
 

@@ -1,6 +1,6 @@
 """待处理页面 - 移动端友好"""
 import streamlit as st
-from utils import db, logic
+from utils import db, logic, sync
 from utils.config import get_expense_types, get_quick_buttons, add_expense_type, delete_expense_type, set_quick_buttons
 
 
@@ -97,6 +97,7 @@ def _render_pending_item(tx: dict, quick_buttons: list[str]):
         with cols[0]:
             if st.button("👤 个人", key=f"p_{tx['id']}", use_container_width=True):
                 logic.classify_expense(tx["id"], "个人")
+                sync.sync_to_github()
                 st.rerun()
 
         for idx, btn in enumerate(quick_buttons[:6]):
@@ -108,11 +109,13 @@ def _render_pending_item(tx: dict, quick_buttons: list[str]):
                     logic.classify_expense(tx["id"], "公司", btn)
                     if tx.get("merchant"):
                         logic.sync_same_merchant(tx["merchant"], "公司", btn)
+                    sync.sync_to_github()
                     st.rerun()
 
         # 不计入按钮
         if st.button("🚫 不计入统计", key=f"ex_{tx['id']}", use_container_width=True):
             logic.mark_not_counted(tx["id"])
+            sync.sync_to_github()
             st.rerun()
 
         st.markdown("---")
@@ -148,10 +151,12 @@ def _render_pending_duplicates():
                 with c1:
                     if st.button("保留", key=f"dk_{tx['id']}", use_container_width=True):
                         logic.resolve_duplicate(tx["id"], "keep")
+                        sync.sync_to_github()
                         st.rerun()
                 with c2:
                     if st.button("不计", key=f"de_{tx['id']}", use_container_width=True):
                         logic.resolve_duplicate(tx["id"], "exclude")
+                        sync.sync_to_github()
                         st.rerun()
 
         st.markdown("---")

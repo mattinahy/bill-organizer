@@ -80,10 +80,24 @@ def insert_transaction(tx: dict) -> int:
 
 
 def batch_insert(transactions: list[dict]) -> int:
-    """批量插入交易，返回插入条数"""
+    """批量插入交易，自动跳过重复记录，返回实际插入条数
+    重复判断：相同 (tx_time, amount, source, merchant) 视为重复
+    """
     count = 0
     with get_conn() as conn:
         for tx in transactions:
+            # 检查是否已存在相同记录
+            existing = conn.execute("""
+                SELECT id FROM transactions
+                WHERE tx_time = ? AND abs(amount - ?) < 0.001
+                  AND source = ? AND COALESCE(merchant,'') = COALESCE(?, '')
+                LIMIT 1
+            """, (tx.get("tx_time"), tx.get("amount"), tx.get("source"),
+                  tx.get("merchant") or "")).fetchone()
+
+            if existing:
+                continue  # 跳过重复
+
             conn.execute("""
                 INSERT INTO transactions
                     (tx_time, amount, direction, source, merchant, original_note,

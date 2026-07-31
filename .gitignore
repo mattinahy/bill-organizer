@@ -1,9 +1,10 @@
-# 数据文件
-database.db
-*.db
+# 上传文件（不跟踪）
 uploads/*
 !uploads/.gitkeep
-reports/*
+
+# 报告文件（不跟踪）
+reports/*.xlsx
+reports/*.db
 !reports/.gitkeep
 
 # Python
@@ -12,6 +13,9 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# 运行时生成
+rules.json
 
 # 系统
 .DS_Store

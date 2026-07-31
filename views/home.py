@@ -1,6 +1,6 @@
 """首页 - 移动端友好"""
 import streamlit as st
-from utils import db
+from utils import db, sync
 
 
 def render():
@@ -61,3 +61,23 @@ def render():
                 )
         else:
             st.info("暂无收入")
+
+    # 数据管理
+    st.markdown("---")
+    with st.expander("💾 数据备份", expanded=False):
+        status = sync.get_sync_status()
+        st.caption(f"最近同步: {status['last_sync']}")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📤 立即同步到 GitHub", use_container_width=True):
+                ok, msg = sync.sync_to_github(force=True)
+                if ok:
+                    st.success(msg)
+                else:
+                    st.warning(msg)
+
+        with col2:
+            if st.button("📥 本地备份", use_container_width=True):
+                msg = sync.manual_backup()
+                st.success(msg)

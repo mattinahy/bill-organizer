@@ -1,6 +1,6 @@
 """支出处理页面 - 移动端友好"""
 import streamlit as st
-from utils import db, logic
+from utils import db, logic, sync
 from utils.config import get_expense_types
 
 
@@ -79,6 +79,7 @@ def _render_expense_row(tx: dict, expense_types: list[str]):
                 db.update_transaction(tx["id"], fields)
                 if own == "公司" and tx.get("merchant"):
                     logic.sync_same_merchant(tx["merchant"], "公司", usage)
+                sync.sync_to_github()
                 st.success("已保存")
                 st.rerun()
 
