@@ -1,0 +1,21 @@
+# 数据文件
+database.db
+*.db
+uploads/*
+!uploads/.gitkeep
+reports/*
+!reports/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
