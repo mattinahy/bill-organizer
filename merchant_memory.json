@@ -3,5 +3,10 @@
     "ownership": "公司",
     "usage_category": "",
     "usage_note": "7月货款"
+  },
+  "京东": {
+    "ownership": "公司",
+    "usage_category": "办公",
+    "usage_note": "买文具"
   }
 }
