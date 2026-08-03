@@ -209,6 +209,11 @@ def get_pending_expenses() -> list[dict]:
     return db.get_pending_expenses()
 
 
+def get_pending_incomes() -> list[dict]:
+    """获取待处理收入"""
+    return db.get_pending_incomes()
+
+
 def get_pending_duplicates() -> list[dict]:
     """获取疑似重复"""
     return db.get_pending_duplicates()

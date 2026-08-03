@@ -202,6 +202,17 @@ def get_pending_expenses() -> list[dict]:
     """)
 
 
+def get_pending_incomes() -> list[dict]:
+    """获取待处理收入"""
+    return query_all("""
+        SELECT * FROM transactions
+        WHERE direction = '收入'
+          AND duplicate_status != '疑似重复'
+          AND ownership = '待确认'
+        ORDER BY tx_time DESC
+    """)
+
+
 def get_pending_duplicates() -> list[dict]:
     """获取疑似重复交易"""
     return query_all("""
